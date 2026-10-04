@@ -1,9 +1,13 @@
 name: LBank Trading Signal Bot
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
   schedule:
     - cron: '*/5 * * * *'
+  workflow_dispatch:  # این خط را اضافه کن
+
 
 jobs:
   run-bot:
