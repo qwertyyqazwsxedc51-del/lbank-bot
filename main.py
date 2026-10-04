@@ -1,4 +1,3 @@
-"Bot is running..."
 import ccxt
 import time
 import requests
