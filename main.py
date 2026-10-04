@@ -11,7 +11,7 @@ TELEGRAM_TOKEN = "GAPGPTMASKTOKENa7iq162fcjuX0X"
 CHAT_ID = "1499492919"
 
 SYMBOL = "NEAR/USDT"
-TIMEFRAME = "15m"
+TIMEFRAME = "5m"
 BASE_MARGIN = 2.0  # مارجین پایه ۲ دلار
 LEVERAGE = 10      # لوریج ۱۰
 
@@ -82,9 +82,6 @@ def analyze_and_trade():
     except Exception as e:
         print(f"Loop Error: {e}")
 
-send_telegram("🚀 ربات معامله‌گر پرایس‌اکشن با موفقیت فعال شد!")
-
-while True:
+if __name__ == '__main__':
     analyze_and_trade()
-    time.sleep(15)
-      
+    
