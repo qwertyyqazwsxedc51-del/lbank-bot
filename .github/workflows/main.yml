@@ -1,35 +1,35 @@
-name: LBank Trading Bot
-
-on:
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
-
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: |
-          pip install ccxt pandas numpy requests
-
-      - name: Run Market Analysis
-        env:
-          LBANK_API_KEY: ${{ secrets.LBANK_API_KEY }}
-          LBANK_API_SECRET: ${{ secrets.LBANK_API_SECRET }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: |
-          python main.py
-          
+def get_lbank_futures_balance():
+    if not (API_KEY and API_SECRET):
+        return 0.0
+    try:
+        ts = str(int(time.time() * 1000))
+        params = {"api_key": API_KEY, "timestamp": ts}
+        sorted_str = "&".join([f"{k}={params[k]}" for k in sorted(params.keys())])
+        sign = hmac.new(API_SECRET.encode(), sorted_str.encode(), hashlib.sha256).hexdigest()
+        url = f"https://lbkperp.lbank.com/cfd/openApi/v1/pub/user/assets?{sorted_str}&sign={sign}"
+        res = requests.get(url, timeout=7)
+        print(f"[RAW Balance Response] status={res.status_code} body={res.text[:500]}")
+        res_json = res.json()
+        print(f"[RAW Balance JSON] {res_json}")
+        # جستجوی عمیق USDT در هر ساختار ممکن
+        found = []
+        def walk(o):
+            if isinstance(o, dict):
+                for k, v in o.items():
+                    if str(k).lower() == "usdt":
+                        found.append(v)
+                    walk(v)
+            elif isinstance(o, list):
+                for i in o: walk(i)
+        walk(res_json)
+        if found:
+            v = found[0]
+            if isinstance(v, dict):
+                for key in ("available", "availableBalance", "availableMargin", "balance", "total"):
+                    if key in v:
+                        return float(v[key] or 0.0)
+        return 0.0
+    except Exception as e:
+        print(f"[Direct API Notice] {e}")
+        return 0.0
+        
