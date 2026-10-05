@@ -1,25 +1,23 @@
-name: LBank Trading Signal Bot
+name: Bot
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
+env:
+  LBANK_API_KEY: ${{ secrets.LBANK_API_KEY }}
+  LBANK_API_SECRET: ${{ secrets.LBANK_API_SECRET }}
+  TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+  CHAT_ID: ${{ secrets.CHAT_ID }}
+
 jobs:
-  run-bot:
+  run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-
-      - name: Install Dependencies
-        run: pip install ccxt pandas numpy requests
-
-      - name: Run Market Analysis
-        run: python main.py
-        
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python main.py
