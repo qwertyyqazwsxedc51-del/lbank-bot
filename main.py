@@ -3,122 +3,115 @@ import time
 import requests
 import ccxt
 import pandas as pd
-import numpy as np
 
-# --- اطلاعات احراز هویت و پارامترها ---
-GAPGPTMASKTOKEN8z3ozgzmzr7X0X = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8", "")
-GAPGPTMASKTOKEN8z3ozgzmzr7X1X = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB", "")
-TELEGRAM_TOKEN = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw", "")
-CHAT_ID = os.getenv("1499492919", "")
+# دریافت متغیرهای محیطی از سکرت‌های گیت‌هاب
+api_key = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8", "")
+api_secret = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB", "")
+tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw", "")
+chat_id = os.getenv("1499492919", "")
 
-# جفت‌ارزهای فیوچرز: نیر و طلا
 SYMBOLS = ["NEAR/USDT:USDT", "XAUUSD/USDT:USDT"]
-LEVERAGE = 10              # لوریج ۱۰
-BASE_MARGIN_USD = 2.0      # حداقل مارجین ورود (دلار)
-RISK_PERCENT = 0.50        # در صورت رشد موجودی، ۵۰٪ موجودی آزاد را درگیر کن
+LEVERAGE = 10
+BASE_MARGIN_USD = 2.0
+RISK_PERCENT = 0.50
 TIMEFRAME = "15m"
 
+# اتصال به صرافی البانک (بخش فیوچرز)
 exchange = ccxt.lbank({
-    'apiKey': GAPGPTMASKTOKEN8z3ozgzmzr7X2X,
-    'secret': GAPGPTMASKTOKEN8z3ozgzmzr7X3X,
+    'apiKey': api_key,
+    'secret': api_secret,
     'enableRateLimit': True,
-    'options': {'defaultType': 'swap'},  # بازار مشتقه و فیوچرز
+    'options': {'defaultType': 'swap'},
 })
 
 def send_telegram(message: str):
-    """ارسال اعلان وضعیت و سیگنال‌ها به تلگرام"""
-    if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("[Telegram] Token or Chat ID not configured.")
+    if not tele_token or not chat_id:
         return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{tele_token}/sendMessage"
     try:
-        res = requests.post(url, json={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}, timeout=10)
-        if res.status_code != 200:
-            print(f"[Telegram Error] {res.status_code}: {res.text}")
+        requests.post(url, json={"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}, timeout=8)
     except Exception as e:
-        print(f"[Telegram Exception] {e}")
+        print(f"[Telegram Error] {e}")
 
 def get_dynamic_margin():
-    """محاسبه سرمایه ورودی متناسب با رشد حساب"""
     try:
         balance = exchange.fetch_balance()
-        free_usdt = balance['USDT']['free'] if 'USDT' in balance and 'free' in balance['USDT'] else BASE_MARGIN_USD
+        free_usdt = 0.0
+        if 'USDT' in balance and 'free' in balance['USDT']:
+            free_usdt = float(balance['USDT']['free'] or 0.0)
+        
+        if free_usdt < BASE_MARGIN_USD:
+            print(f"[*] Available Futures USDT: {free_usdt:.2f}$ (Using Base {BASE_MARGIN_USD}$)")
+            return BASE_MARGIN_USD
+        
         margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
-        print(f"[*] Total Free USDT: {free_usdt:.2f}$ | Allocated Margin: {margin:.2f}$")
+        print(f"[*] Available Futures USDT: {free_usdt:.2f}$ | Selected Margin: {margin:.2f}$")
         return round(margin, 2)
     except Exception as e:
         print(f"[Balance Warning] {e}")
         return BASE_MARGIN_USD
 
 def has_open_position(symbol: str) -> bool:
-    """بررسی اینکه آیا پوزیشن فعالی روی نماد وجود دارد یا خیر"""
     try:
         positions = exchange.fetch_positions([symbol])
         for pos in positions:
-            # اگر حجم پوزیشن غیر صفر باشد، یعنی معامله باز داریم
-            if pos.get('symbol') == symbol and float(pos.get('contracts', 0) or pos.get('size', 0) or 0) > 0:
-                print(f"[!] Active position already open for {symbol}. Skipping new entry.")
+            contracts = float(pos.get('contracts') or pos.get('size') or 0.0)
+            if pos.get('symbol') == symbol and contracts > 0:
+                print(f"[!] Position already open for {symbol}. Skipping.")
                 return True
         return False
     except Exception as e:
-        print(f"[Position Check Info] {e}")
         return False
 
-def place_order_with_brackets(symbol: str, side: str, margin_usd: float, sl_price: float, tp_price: float):
-    """
-    ثبت اردر ورود مارکت همراه با ثبت حد سود (TP) و حد ضرر (SL) خودکار در صرافی
-    """
+def place_order_safe(symbol: str, side: str, margin_usd: float, sl_price: float, tp_price: float):
     try:
-        market = exchange.market(symbol)
-        exchange.set_leverage(LEVERAGE, market['id'])
-        current_price = exchange.fetch_ticker(symbol)['last']
-        
-        # محاسبه حجم دقیق بر اساس لوریج
-        amount = (margin_usd * LEVERAGE) / current_price
-        amount = float(exchange.amount_to_precision(symbol, amount))
-        sl_price = float(exchange.price_to_precision(symbol, sl_price))
-        tp_price = float(exchange.price_to_precision(symbol, tp_price))
+        markets = exchange.load_markets()
+        if symbol not in markets:
+            print(f"[Error] Symbol {symbol} not supported on LBank Swap.")
+            return None
 
-        print(f"[*] Placing {side.upper()} on {symbol}: Amount={amount}, SL={sl_price}, TP={tp_price}")
-        
-        # ۱. ثبت اردر مارکت برای ورود
-        entry_order = exchange.create_market_order(symbol, side, amount)
-        print(f"[+] Entry Order Filled! ID: {entry_order.get('id', 'N/A')}")
-        
-        # ۲. ثبت اردرهای محافظتی معکوس (Exit Brackets)
-        exit_side = 'sell' if side.lower() == 'buy' else 'buy'
-        
-        # اردر حد ضرر (Stop Loss)
         try:
-            exchange.create_order(
-                symbol=symbol,
-                type='stop_market',
-                side=exit_side,
-                amount=amount,
-                params={'stopPrice': sl_price, 'reduceOnly': True}
-            )
-            print(f"[+] Stop-Loss set at {sl_price}")
-        except Exception as e:
-            print(f"[!] Warning on Setting SL Order: {e}")
+            exchange.set_leverage(LEVERAGE, symbol)
+        except Exception:
+            pass
 
-        # اردر حد سود (Take Profit)
+        ticker = exchange.fetch_ticker(symbol)
+        current_price = ticker['last']
+
+        raw_amount = (margin_usd * LEVERAGE) / current_price
+        amount = float(exchange.amount_to_precision(symbol, raw_amount))
+
+        market_info = markets[symbol]
+        min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0)
+        if min_amount and amount < min_amount:
+            err = f"⚠️ حجم محاسبه‌شده ({amount}) کمتر از حداقل سفارش البانک ({min_amount}) است."
+            print(err)
+            send_telegram(err)
+            return None
+
+        print(f"[*] Executing {side.upper()} on {symbol} -> Amount: {amount} at ~{current_price}")
+        
+        order = exchange.create_market_order(symbol, side, amount)
+        print(f"[+] Entry Order Filled! ID: {order.get('id', 'N/A')}")
+
+        exit_side = 'sell' if side.lower() == 'buy' else 'buy'
         try:
             exchange.create_order(
                 symbol=symbol,
                 type='limit',
                 side=exit_side,
                 amount=amount,
-                price=tp_price,
+                price=float(exchange.price_to_precision(symbol, tp_price)),
                 params={'reduceOnly': True}
             )
-            print(f"[+] Take-Profit set at {tp_price}")
-        except Exception as e:
-            print(f"[!] Warning on Setting TP Order: {e}")
+            print(f"[+] TP Order Placed at {tp_price}")
+        except Exception as tp_err:
+            print(f"[TP Note] {tp_err}")
 
-        return entry_order
+        return order
 
     except Exception as e:
-        err_msg = f"⚠️ *خطا در ثبت معامله در البانک ({symbol}):*\n`{e}`"
+        err_msg = f"⚠️ *خطا در اجرای سفارش ({symbol}):*\n`{e}`"
         print(err_msg)
         send_telegram(err_msg)
         return None
@@ -132,7 +125,6 @@ def fetch_data(symbol):
         return None
 
 def calc_indicators(df):
-    """محاسبه میانگین متحرک ۲۰ و ATR دوره ۱۴"""
     df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
     hl = df['high'] - df['low']
     hc = (df['high'] - df['close'].shift()).abs()
@@ -149,68 +141,57 @@ def analyze(symbol: str, margin: float):
         return
 
     df = calc_indicators(df)
-    c = df.iloc[-2]     # کندل بسته شده معیار تصمیم‌گیری
-    curr = df.iloc[-1]  # قیمت لحظه‌ای
+    c = df.iloc[-2]
+    curr = df.iloc[-1]
     
     ema = c['ema20']
     atr = c['atr']
     rng = c['high'] - c['low']
     body = abs(c['close'] - c['open'])
 
-    if rng == 0:
+    if rng == 0 or (body / rng) < 0.35:
         return
 
-    # ۱. فیلتر حداقل بدنه کندل (حداقل ۳۵٪ کل دامنه کندل)
-    if (body / rng) < 0.35:
-        return
-
-    # ۲. قوانین پرایس‌اکشن ال بروکس برای کندل سیگنال معتبر
     close_in_upper_third = (c['close'] - c['low']) >= (0.65 * rng)
     close_in_lower_third = (c['high'] - c['close']) >= (0.65 * rng)
 
-    # --- ستاپ صعودی M2B (Long) ---
+    # ستاپ خرید M2B
     if c['close'] > ema and c['open'] >= ema and c['close'] > c['open'] and close_in_upper_third:
-        # حد ضرر: کف کندل منهای بافر ATR
         sl = c['low'] - (0.2 * atr)
         risk = c['close'] - sl
-        if risk <= 0:
-            return
-        # حد سود با نسبت ریسک به ریوارد ۱ به ۲
+        if risk <= 0: return
         tp = c['close'] + (2.0 * risk)
 
         msg = (
-            f"🟢 *سیگنال خرید و پوزیشن باز شد (LONG)*\n"
+            f"🟢 *سیگنال خرید و ثبت سفارش (LONG)*\n"
             f"نماد: `{symbol}`\n"
-            f"قیمت ورود: `{curr['close']}`\n"
-            f"مارجین اختصاص‌یافته: `{margin}$` (لوریج: `x{LEVERAGE}`)\n"
-            f"🛑 حد ضرر (SL): `{sl:.4f}`\n"
-            f"🎯 حد سود (TP): `{tp:.4f}` (R:R 1:2)"
+            f"قیمت: `{curr['close']}`\n"
+            f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
+            f"🛑 حد ضرر: `{sl:.4f}`\n"
+            f"🎯 حد سود: `{tp:.4f}`"
         )
         print(f"[{time.strftime('%H:%M:%S')}] Signal LONG on {symbol}")
         send_telegram(msg)
-        place_order_with_brackets(symbol, 'buy', margin, sl, tp)
+        place_order_safe(symbol, 'buy', margin, sl, tp)
 
-    # --- ستاپ نزولی M2S (Short) ---
+    # ستاپ فروش M2S
     elif c['close'] < ema and c['open'] <= ema and c['close'] < c['open'] and close_in_lower_third:
-        # حد ضرر: سقف کندل به‌علاوه بافر ATR
         sl = c['high'] + (0.2 * atr)
         risk = sl - c['close']
-        if risk <= 0:
-            return
-        # حد سود با نسبت ریسک به ریوارد ۱ به ۲
+        if risk <= 0: return
         tp = c['close'] - (2.0 * risk)
 
         msg = (
-            f"🔴 *سیگنال فروش و پوزیشن باز شد (SHORT)*\n"
+            f"🔴 *سیگنال فروش و ثبت سفارش (SHORT)*\n"
             f"نماد: `{symbol}`\n"
-            f"قیمت ورود: `{curr['close']}`\n"
-            f"مارجین اختصاص‌یافته: `{margin}$` (لوریج: `x{LEVERAGE}`)\n"
-            f"🛑 حد ضرر (SL): `{sl:.4f}`\n"
-            f"🎯 حد سود (TP): `{tp:.4f}` (R:R 1:2)"
+            f"قیمت: `{curr['close']}`\n"
+            f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
+            f"🛑 حد ضرر: `{sl:.4f}`\n"
+            f"🎯 حد سود: `{tp:.4f}`"
         )
         print(f"[{time.strftime('%H:%M:%S')}] Signal SHORT on {symbol}")
         send_telegram(msg)
-        place_order_with_brackets(symbol, 'sell', margin, sl, tp)
+        place_order_safe(symbol, 'sell', margin, sl, tp)
 
 if __name__ == "__main__":
     for i in range(9):
@@ -219,4 +200,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-    
+            
