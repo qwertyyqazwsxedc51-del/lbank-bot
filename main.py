@@ -6,7 +6,6 @@ import requests
 import ccxt
 import pandas as pd
 
-# کلیدها از سکرت‌های گیت‌هاب
 api_key = os.getenv("LBANK_API_KEY", "")
 api_secret = os.getenv("LBANK_API_SECRET", "")
 tele_token = os.getenv("TELEGRAM_TOKEN", "")
@@ -18,12 +17,13 @@ BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
 TIMEFRAME = "15m"
 
-# تنظیمات کلاینت برای دریافت قیمت و دیتا
+# کلاینت فیوچرز اختصاصی LBank
 exchange = ccxt.lbank({
-    'enableRateLimit': True,
     'apiKey': api_key,
     'secret': api_secret,
+    'enableRateLimit': True,
     'options': {
+        'defaultType': 'swap',
         'createMarketBuyOrderRequiresPrice': False,
     }
 })
@@ -38,50 +38,44 @@ def send_telegram(message: str):
         print(f"[Telegram Error] {e}")
 
 def get_lbank_futures_balance():
-    """دریافت دقیق موجودی تتر فیوچرز LBank از طریق اندپوینت رسمی REST"""
-    if not (api_key and api_secret):
-        return 0.0
+    """خواندن مستقیم کیف‌پول فیوچرز LBank"""
+    # راهکار ۱: استفاده از ccxt با مود swap
+    try:
+        bal = exchange.fetch_balance(params={'type': 'swap'})
+        if 'USDT' in bal and 'free' in bal['USDT']:
+            val = float(bal['USDT']['free'] or 0.0)
+            if val > 0:
+                return val
+        if 'free' in bal and 'USDT' in bal['free']:
+            val = float(bal['free']['USDT'] or 0.0)
+            if val > 0:
+                return val
+    except Exception as e:
+        print(f"[CCXT Swap Balance Notice] {e}")
 
-    timestamp = str(int(time.time() * 1000))
-    query_str = f"api_key={api_key}&timestamp={timestamp}"
-    
-    # تولید امضای استاندارد LBank Futures
-    sign = hmac.new(api_secret.encode('utf-8'), query_str.encode('utf-8'), hashlib.sha256).hexdigest()
-    
-    headers = {
-        'api_key': api_key,
-        'timestamp': timestamp,
-        'signature': sign,
-        'Content-Type': 'application/json'
-    }
-
-    urls = [
-        f"https://lbkperp.lbank.com/cfd/openApi/v1/pub/user/assets?{query_str}&sign={sign}",
-        f"https://www.lbank.com/v2/supplement/customer_asset.do?{query_str}&sign={sign}"
-    ]
-
-    for url in urls:
+    # راهکار ۲: اندپوینت اختصاصی سرور پرپچوال LBank
+    if api_key and api_secret:
         try:
-            res = requests.get(url, headers=headers, timeout=8)
+            ts = str(int(time.time() * 1000))
+            params = {
+                "api_key": api_key,
+                "timestamp": ts
+            }
+            sorted_str = "&".join([f"{k}={params[k]}" for k in sorted(params.keys())])
+            sign = hmac.new(api_secret.encode('utf-8'), sorted_str.encode('utf-8'), hashlib.sha256).hexdigest()
+            
+            url = f"https://lbkperp.lbank.com/cfd/openApi/v1/pub/user/assets?{sorted_str}&sign={sign}"
+            res = requests.get(url, headers={"api_key": api_key, "timestamp": ts, "signature": sign}, timeout=7)
             if res.status_code == 200:
-                data = res.json()
-                # جستجو در خروجی داده‌های LBank
-                raw_data = data.get('data') or data.get('result') or []
-                if isinstance(raw_data, list):
-                    for item in raw_data:
-                        curr = item.get('currency') or item.get('asset') or item.get('coinName') or ''
-                        if curr.upper() == 'USDT':
-                            val = item.get('availableMargin') or item.get('availableBalance') or item.get('free') or item.get('balance')
-                            if val is not None:
-                                return float(val)
-                elif isinstance(raw_data, dict):
-                    if 'USDT' in raw_data:
-                        return float(raw_data['USDT'].get('free', 0.0) or raw_data['USDT'].get('available', 0.0) or 0.0)
-                    val = raw_data.get('availableMargin') or raw_data.get('availableBalance') or raw_data.get('free')
-                    if val is not None:
-                        return float(val)
-        except Exception:
-            continue
+                res_json = res.json()
+                data = res_json.get("data") or []
+                if isinstance(data, list):
+                    for coin in data:
+                        symbol = coin.get("currency") or coin.get("asset") or ""
+                        if symbol.upper() == "USDT":
+                            return float(coin.get("availableMargin") or coin.get("availableBalance") or coin.get("balance") or 0.0)
+        except Exception as e:
+            print(f"[Direct API Notice] {e}")
 
     return 0.0
 
@@ -91,17 +85,10 @@ def get_dynamic_margin():
 
     free_usdt = get_lbank_futures_balance()
 
-    # در صورتی که پاسخ مستقیم دریافت نشد، از CCXT اسپات تست شود
-    if free_usdt == 0.0:
-        try:
-            bal = exchange.fetch_balance()
-            free_usdt = float(bal.get('USDT', {}).get('free', 0.0) or 0.0)
-        except Exception:
-            pass
-
     if free_usdt > 0.0:
         margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
     else:
+        # اگر صفر خواند، حداقل ۲ دلار مارجین پیش‌فرض حفظ شود
         margin = BASE_MARGIN_USD
 
     print(f"[*] Free USDT: {free_usdt:.2f}$ | Allocated Margin: {margin:.2f}$")
@@ -116,26 +103,23 @@ def place_order_safe(symbol: str, side: str, margin_usd: float, sl_price: float,
         ticker = exchange.fetch_ticker(symbol)
         current_price = ticker.get('last') or ticker.get('close')
         if not current_price:
-            print(f"[Order Error] Could not fetch current price for {symbol}")
             return None
 
         raw_amount = (margin_usd * LEVERAGE) / current_price
-        
         try:
             amount = float(exchange.amount_to_precision(symbol, raw_amount))
         except Exception:
             amount = round(raw_amount, 2)
 
-        print(f"[*] Placing {side.upper()} order for {symbol} | Amount: {amount} | Ref Price: {current_price}")
-        
+        print(f"[*] Placing {side.upper()} order on {symbol} | Amount: {amount}")
         order = exchange.create_order(
             symbol=symbol,
             type='market',
             side=side,
             amount=amount,
-            price=current_price
+            price=current_price,
+            params={'leverage': LEVERAGE}
         )
-        
         print(f"[+] Order Filled: {order.get('id', 'N/A')}")
         return order
     except Exception as e:
@@ -181,7 +165,7 @@ def analyze(symbol: str, margin: float):
     close_in_upper_third = (c['close'] - c['low']) >= (0.65 * rng)
     close_in_lower_third = (c['high'] - c['close']) >= (0.65 * rng)
 
-    # ستاپ خرید M2B (لانگ)
+    # ستاپ M2B (خرید)
     if c['close'] > ema and c['open'] >= ema and c['close'] > c['open'] and close_in_upper_third:
         sl = c['low'] - (0.2 * atr)
         risk = c['close'] - sl
@@ -192,7 +176,7 @@ def analyze(symbol: str, margin: float):
             f"🟢 *سیگنال خرید (LONG)*\n"
             f"نماد: `{symbol}`\n"
             f"قیمت ورود: `{curr['close']}`\n"
-            f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
+            f"مارجین: `{margin}$` | اهرم: `x{LEVERAGE}`\n"
             f"🛑 حد ضرر: `{sl:.4f}`\n"
             f"🎯 حد سود: `{tp:.4f}`"
         )
@@ -200,7 +184,7 @@ def analyze(symbol: str, margin: float):
         send_telegram(msg)
         place_order_safe(symbol, 'buy', margin, sl, tp)
 
-    # ستاپ فروش M2S (شورت)
+    # ستاپ M2S (فروش)
     elif c['close'] < ema and c['open'] <= ema and c['close'] < c['open'] and close_in_lower_third:
         sl = c['high'] + (0.2 * atr)
         risk = sl - c['close']
@@ -211,7 +195,7 @@ def analyze(symbol: str, margin: float):
             f"🔴 *سیگنال فروش (SHORT)*\n"
             f"نماد: `{symbol}`\n"
             f"قیمت ورود: `{curr['close']}`\n"
-            f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
+            f"مارجین: `{margin}$` | اهرم: `x{LEVERAGE}`\n"
             f"🛑 حد ضرر: `{sl:.4f}`\n"
             f"🎯 حد سود: `{tp:.4f}`"
         )
