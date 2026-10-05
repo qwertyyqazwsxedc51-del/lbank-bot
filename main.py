@@ -1,4 +1,3 @@
-print("Starting analysis cycle...")
 import ccxt
 import time
 import requests
@@ -6,19 +5,19 @@ import pandas as pd
 import numpy as np
 
 # ================= تنظیمات و کلیدها =================
-LBANK_API_KEY = "GAPGPTMASKTOKEN7zt92gn7xbhX0X"
-LBANK_SECRET_KEY = "GAPGPTMASKTOKEN7zt92gn7xbhX1X"
-TELEGRAM_TOKEN = "GAPGPTMASKTOKEN7zt92gn7xbhX2X"
+GAPGPTMASKTOKEN9milxpv3htqX7X = "GAPGPTMASKTOKEN9milxpv3htqX8X"
+GAPGPTMASKTOKEN9milxpv3htqX9X = "GAPGPTMASKTOKEN9milxpv3htqX10X"
+TELEGRAM_TOKEN = "GAPGPTMASKTOKEN9milxpv3htqX11X"
 CHAT_ID = "1499492919"
 
 SYMBOL = "NEAR/USDT"
 TIMEFRAME = "5m"
-BASE_MARGIN = 2.0  # مارجین پایه ۲ دلار
-LEVERAGE = 10      # لوریج ۱۰
+CHECK_INTERVAL = 30    # هر ۳۰ ثانیه یک‌بار
+TOTAL_CYCLES = 9       # ۹ بار بررسی (حدود ۴.۵ دقیقه زنده ماندن)
 
 exchange = ccxt.lbank({
-    'apiKey': LBANK_API_KEY,
-    'secret': LBANK_SECRET_KEY,
+    'apiKey': GAPGPTMASKTOKEN9milxpv3htqX12X,
+    'secret': GAPGPTMASKTOKEN9milxpv3htqX13X,
     'options': {'defaultType': 'swap'},
     'enableRateLimit': True,
 })
@@ -33,7 +32,6 @@ def send_telegram(msg):
         print(f"Telegram Error: {e}")
 
 def get_market_data():
-    print(f"Fetching market data for {SYMBOL}...")
     ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=100)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
@@ -43,57 +41,59 @@ def get_market_data():
     df['atr'] = df['tr'].rolling(14).mean()
     return df
 
-def analyze_and_trade():
+def analyze():
     try:
         df = get_market_data()
-        last = df.iloc[-2]      # کندل بسته شده قبلی (سیگنال)
-        current = df.iloc[-1]   # کندل جاری
+        last = df.iloc[-2]      # کندل بسته شده
+        current = df.iloc[-1]   # کندل جاری لحظه‌ای
         
-        print(f"Current Price: {current['close']} | EMA20: {last['ema20']:.4f}")
+        print(f"[{time.strftime('%H:%M:%S')}] Price: {current['close']} | EMA20: {last['ema20']:.4f}")
         
         body_size = abs(last['close'] - last['open'])
         candle_range = last['high'] - last['low']
         
-        # فیلتر کندل دوجی / بدون بدنه ال بروکس
         if candle_range == 0 or (body_size / candle_range) < 0.35:
-            print("Candle filtered: Doji / Small body")
+            print("Filtered: Doji / Small body")
             return
 
-        # ستاپ فروش (M2S / Bearish Breakout)
+        # ستاپ فروش
         if last['close'] < last['ema20'] and last['open'] < last['ema20']:
-            if current['close'] < last['low']:  # تریگر شکست کف
+            if current['close'] < last['low']:
                 entry = current['close']
                 sl = last['high'] + (last['atr'] * 0.2)
                 tp1 = entry - (1.5 * (sl - entry))
                 tp2 = entry - (2.5 * (sl - entry))
-                
-                msg = f"🔴 *سیگنال فروش پرایس‌اکشن (SHORT)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
+                msg = f"🔴 *سیگنال فروش (SHORT)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
                 send_telegram(msg)
                 print("Signal Sent: SHORT")
+                time.sleep(300)
             else:
-                print("Setup Bearish detected, but no trigger below low yet.")
+                print("Bearish setup, waiting for break below low.")
 
-        # ستاپ خرید (M2B / Bullish Breakout)
+        # ستاپ خرید
         elif last['close'] > last['ema20'] and last['open'] > last['ema20']:
-            if current['close'] > last['high']:  # تریگر شکست سقف
+            if current['close'] > last['high']:
                 entry = current['close']
                 sl = last['low'] - (last['atr'] * 0.2)
                 tp1 = entry + (1.5 * (entry - sl))
                 tp2 = entry + (2.5 * (entry - sl))
-                
-                msg = f"🟢 *سیگنال خرید پرایس‌اکشن (LONG)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
+                msg = f"🟢 *سیگنال خرید (LONG)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
                 send_telegram(msg)
                 print("Signal Sent: LONG")
+                time.sleep(300)
             else:
-                print("Setup Bullish detected, but no trigger above high yet.")
+                print("Bullish setup, waiting for break above high.")
         else:
-            print("No M2B/M2S setup matching EMA rules.")
+            print("No M2B/M2S setup matching EMA.")
                 
     except Exception as e:
-        print(f"Execution Error: {e}")
+        print(f"Loop Error: {e}")
 
-# اجرای تحلیل در هر بار ران شدن گیت‌هاب اکشن
 if __name__ == "__main__":
-    analyze_and_trade()
-    print("Cycle finished.")
+    print("Starting 30-second checking loop...")
+    for cycle in range(TOTAL_CYCLES):
+        analyze()
+        if cycle < TOTAL_CYCLES - 1:
+            time.sleep(CHECK_INTERVAL)
+    print("Batch finished.")
     
