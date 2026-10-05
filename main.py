@@ -135,4 +135,4 @@ if __name__ == "__main__":
         analyze_market(sym, trade_margin)
         
     print("Done.")
-    
+        
