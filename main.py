@@ -10,7 +10,7 @@ api_secret = os.getenv("LBANK_API_SECRET", "")
 tele_token = os.getenv("TELEGRAM_TOKEN", "")
 chat_id = os.getenv("CHAT_ID", "")
 
-SYMBOLS = ["NEAR/USDT", "XAUUSD/USDT"]
+SYMBOLS = ["NEAR/USDT", "PAXG/USDT"]
 LEVERAGE = 10
 BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
