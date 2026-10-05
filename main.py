@@ -20,6 +20,7 @@ TIMEFRAME = "15m"
 exchange_config = {
     'enableRateLimit': True,
     'options': {
+        'defaultType': 'swap',  # تنظیم پیش‌فرض روی بازار فیوچرز/سواپ
         'createMarketBuyOrderRequiresPrice': False,
     }
 }
@@ -42,12 +43,51 @@ def send_telegram(message: str):
 def get_dynamic_margin():
     if not (api_key and api_secret):
         return BASE_MARGIN_USD
+    
+    free_usdt = 0.0
     try:
-        balance = exchange.fetch_balance()
-        free_usdt = float(balance.get('USDT', {}).get('free', 0.0) or 0.0)
-        margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
+        # ۱. تلاش برای خواندن مستقیم از حساب Swap / Futures
+        try:
+            balance = exchange.fetch_balance(params={'type': 'swap'})
+        except Exception:
+            try:
+                balance = exchange.fetch_balance(params={'accountType': 'contract'})
+            except Exception:
+                balance = exchange.fetch_balance()
+
+        # ۲. استخراج هوشمند مقدار تتر از ساختارهای مختلف خروجی البانک
+        if isinstance(balance, dict):
+            # بررسی ساختارهای استاندارد CCXT
+            if 'USDT' in balance and isinstance(balance['USDT'], dict):
+                free_usdt = float(balance['USDT'].get('free', 0.0) or balance['USDT'].get('total', 0.0) or 0.0)
+            elif 'free' in balance and isinstance(balance['free'], dict):
+                free_usdt = float(balance['free'].get('USDT', 0.0) or balance['free'].get('usdt', 0.0) or 0.0)
+            elif 'total' in balance and isinstance(balance['total'], dict):
+                free_usdt = float(balance['total'].get('USDT', 0.0) or balance['total'].get('usdt', 0.0) or 0.0)
+            
+            # بررسی ساختار خام داده‌های LBank در info
+            if free_usdt == 0.0 and 'info' in balance:
+                raw_info = balance['info']
+                if isinstance(raw_info, dict):
+                    # برای فرمت‌های پاسخ اختصاصی قراردادهای البانک
+                    data = raw_info.get('data') or raw_info
+                    if isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and item.get('asset', '').upper() == 'USDT':
+                                free_usdt = float(item.get('availableBalance') or item.get('free') or item.get('marginBalance') or 0.0)
+                                break
+                    elif isinstance(data, dict):
+                        free_usdt = float(data.get('availableBalance') or data.get('available') or data.get('marginBalance') or 0.0)
+
+        # اگر موجودی پیدا شد، مارجین پویا محاسبه شود؛ در غیر این صورت از حداقل تعیین‌شده استفاده می‌شود
+        if free_usdt > 0:
+            margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
+        else:
+            margin = BASE_MARGIN_USD
+
         print(f"[*] Free USDT: {free_usdt:.2f}$ | Allocated Margin: {margin:.2f}$")
         return round(margin, 2)
+
     except Exception as e:
         print(f"[Balance Notice] {e}")
         return BASE_MARGIN_USD
@@ -175,4 +215,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-                           
+    
