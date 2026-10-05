@@ -5,10 +5,11 @@ import ccxt
 import pandas as pd
 
 # کلیدها از محیط خوانده می‌شوند
-GAPGPTMASKTOKENmkk2l8vzk9iX0X = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8",)
-GAPGPTMASKTOKENmkk2l8vzk9iX1X = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB",)
-tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw",)
-chat_id = os.getenv("1499492919",)
+api_key = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8", "")
+api_secret = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB", "")
+tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw", "")
+chat_id = os.getenv("1499492919", "")
+
 
 SYMBOLS = ["NEAR/USDT", "BTC/USDT"]
 LEVERAGE = 10
@@ -21,9 +22,8 @@ exchange_config = {
     'enableRateLimit': True,
 }
 
-if GAPGPTMASKTOKENmkk2l8vzk9iX2X and GAPGPTMASKTOKENmkk2l8vzk9iX3X:
-    exchange_config['apiKey'] = GAPGPTMASKTOKENmkk2l8vzk9iX4X
-    exchange_config['secret'] = GAPGPTMASKTOKENmkk2l8vzk9iX5X
+if api_key and api_secret:
+
 
 exchange = ccxt.lbank(exchange_config)
 
