@@ -5,19 +5,19 @@ import pandas as pd
 import numpy as np
 
 # ================= تنظیمات و کلیدها =================
-GAPGPTMASKTOKEN9milxpv3htqX7X = "GAPGPTMASKTOKEN9milxpv3htqX8X"
-GAPGPTMASKTOKEN9milxpv3htqX9X = "GAPGPTMASKTOKEN9milxpv3htqX10X"
-TELEGRAM_TOKEN = "GAPGPTMASKTOKEN9milxpv3htqX11X"
+API_KEY = "3fbd463c-b7a1-403c-955c-34958a3537d8"
+API_SECRET = "6DEAC5931CAAAAE74956CBCAC10B9FAB"
+TELEGRAM_TOKEN = "GAPGPTMASKTOKENbf72woioft9X1X"
 CHAT_ID = "1499492919"
 
 SYMBOL = "NEAR/USDT"
 TIMEFRAME = "5m"
 CHECK_INTERVAL = 30    # هر ۳۰ ثانیه یک‌بار
-TOTAL_CYCLES = 9       # ۹ بار بررسی (حدود ۴.۵ دقیقه زنده ماندن)
+TOTAL_CYCLES = 9       # ۹ بار بررسی
 
 exchange = ccxt.lbank({
-    'apiKey': GAPGPTMASKTOKEN9milxpv3htqX12X,
-    'secret': GAPGPTMASKTOKEN9milxpv3htqX13X,
+    'apiKey': API_KEY,
+    'secret': API_SECRET,
     'options': {'defaultType': 'swap'},
     'enableRateLimit': True,
 })
