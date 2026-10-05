@@ -4,25 +4,28 @@ import requests
 import ccxt
 import pandas as pd
 
-# دریافت متغیرهای محیطی از سکرت‌های گیت‌هاب
-api_key = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8", "")
-api_secret = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB", "")
-tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw", "")
-chat_id = os.getenv("1499492919", "")
+# کلیدها از محیط خوانده می‌شوند
+GAPGPTMASKTOKENmkk2l8vzk9iX0X = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8",)
+GAPGPTMASKTOKENmkk2l8vzk9iX1X = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB",)
+tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw",)
+chat_id = os.getenv("1499492919",)
 
-SYMBOLS = ["NEAR/USDT:USDT", "XAUUSD/USDT:USDT"]
+SYMBOLS = ["NEAR/USDT", "BTC/USDT"]
 LEVERAGE = 10
 BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
 TIMEFRAME = "15m"
 
-# اتصال به صرافی البانک (بخش فیوچرز)
-exchange = ccxt.lbank({
-    'apiKey': api_key,
-    'secret': api_secret,
+# اتصال به صرافی البانک
+exchange_config = {
     'enableRateLimit': True,
-    'options': {'defaultType': 'swap'},
-})
+}
+
+if GAPGPTMASKTOKENmkk2l8vzk9iX2X and GAPGPTMASKTOKENmkk2l8vzk9iX3X:
+    exchange_config['apiKey'] = GAPGPTMASKTOKENmkk2l8vzk9iX4X
+    exchange_config['secret'] = GAPGPTMASKTOKENmkk2l8vzk9iX5X
+
+exchange = ccxt.lbank(exchange_config)
 
 def send_telegram(message: str):
     if not tele_token or not chat_id:
@@ -34,84 +37,35 @@ def send_telegram(message: str):
         print(f"[Telegram Error] {e}")
 
 def get_dynamic_margin():
+    if not (GAPGPTMASKTOKENmkk2l8vzk9iX6X and GAPGPTMASKTOKENmkk2l8vzk9iX7X):
+        return BASE_MARGIN_USD
     try:
         balance = exchange.fetch_balance()
-        free_usdt = 0.0
-        if 'USDT' in balance and 'free' in balance['USDT']:
-            free_usdt = float(balance['USDT']['free'] or 0.0)
-        
-        if free_usdt < BASE_MARGIN_USD:
-            print(f"[*] Available Futures USDT: {free_usdt:.2f}$ (Using Base {BASE_MARGIN_USD}$)")
-            return BASE_MARGIN_USD
-        
+        free_usdt = float(balance.get('USDT', {}).get('free', 0.0) or 0.0)
         margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
-        print(f"[*] Available Futures USDT: {free_usdt:.2f}$ | Selected Margin: {margin:.2f}$")
+        print(f"[*] Free USDT: {free_usdt:.2f}$ | Allocated Margin: {margin:.2f}$")
         return round(margin, 2)
     except Exception as e:
-        print(f"[Balance Warning] {e}")
+        print(f"[Balance Notice] {e}")
         return BASE_MARGIN_USD
 
-def has_open_position(symbol: str) -> bool:
-    try:
-        positions = exchange.fetch_positions([symbol])
-        for pos in positions:
-            contracts = float(pos.get('contracts') or pos.get('size') or 0.0)
-            if pos.get('symbol') == symbol and contracts > 0:
-                print(f"[!] Position already open for {symbol}. Skipping.")
-                return True
-        return False
-    except Exception as e:
-        return False
-
 def place_order_safe(symbol: str, side: str, margin_usd: float, sl_price: float, tp_price: float):
+    if not (GAPGPTMASKTOKENmkk2l8vzk9iX8X and GAPGPTMASKTOKENmkk2l8vzk9iX9X):
+        print(f"[Mode] API Keys not present, running in Signal-Only mode.")
+        return None
+
     try:
-        markets = exchange.load_markets()
-        if symbol not in markets:
-            print(f"[Error] Symbol {symbol} not supported on LBank Swap.")
-            return None
-
-        try:
-            exchange.set_leverage(LEVERAGE, symbol)
-        except Exception:
-            pass
-
         ticker = exchange.fetch_ticker(symbol)
         current_price = ticker['last']
-
         raw_amount = (margin_usd * LEVERAGE) / current_price
         amount = float(exchange.amount_to_precision(symbol, raw_amount))
 
-        market_info = markets[symbol]
-        min_amount = market_info.get('limits', {}).get('amount', {}).get('min', 0.0)
-        if min_amount and amount < min_amount:
-            err = f"⚠️ حجم محاسبه‌شده ({amount}) کمتر از حداقل سفارش البانک ({min_amount}) است."
-            print(err)
-            send_telegram(err)
-            return None
-
-        print(f"[*] Executing {side.upper()} on {symbol} -> Amount: {amount} at ~{current_price}")
-        
+        print(f"[*] Placing {side.upper()} order for {symbol} (Amount: {amount})")
         order = exchange.create_market_order(symbol, side, amount)
-        print(f"[+] Entry Order Filled! ID: {order.get('id', 'N/A')}")
-
-        exit_side = 'sell' if side.lower() == 'buy' else 'buy'
-        try:
-            exchange.create_order(
-                symbol=symbol,
-                type='limit',
-                side=exit_side,
-                amount=amount,
-                price=float(exchange.price_to_precision(symbol, tp_price)),
-                params={'reduceOnly': True}
-            )
-            print(f"[+] TP Order Placed at {tp_price}")
-        except Exception as tp_err:
-            print(f"[TP Note] {tp_err}")
-
+        print(f"[+] Order Filled: {order.get('id', 'N/A')}")
         return order
-
     except Exception as e:
-        err_msg = f"⚠️ *خطا در اجرای سفارش ({symbol}):*\n`{e}`"
+        err_msg = f"⚠️ *خطا در ثبت سفارش ({symbol}):*\n`{e}`"
         print(err_msg)
         send_telegram(err_msg)
         return None
@@ -133,9 +87,6 @@ def calc_indicators(df):
     return df
 
 def analyze(symbol: str, margin: float):
-    if has_open_position(symbol):
-        return
-
     df = fetch_data(symbol)
     if df is None or len(df) < 25:
         return
@@ -150,6 +101,7 @@ def analyze(symbol: str, margin: float):
     body = abs(c['close'] - c['open'])
 
     if rng == 0 or (body / rng) < 0.35:
+        print(f"[{symbol}] Price: {curr['close']} | EMA20: {ema:.4f} | No setup (Doji/Weak)")
         return
 
     close_in_upper_third = (c['close'] - c['low']) >= (0.65 * rng)
@@ -163,7 +115,7 @@ def analyze(symbol: str, margin: float):
         tp = c['close'] + (2.0 * risk)
 
         msg = (
-            f"🟢 *سیگنال خرید و ثبت سفارش (LONG)*\n"
+            f"🟢 *سیگنال خرید (LONG)*\n"
             f"نماد: `{symbol}`\n"
             f"قیمت: `{curr['close']}`\n"
             f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
@@ -182,7 +134,7 @@ def analyze(symbol: str, margin: float):
         tp = c['close'] - (2.0 * risk)
 
         msg = (
-            f"🔴 *سیگنال فروش و ثبت سفارش (SHORT)*\n"
+            f"🔴 *سیگنال فروش (SHORT)*\n"
             f"نماد: `{symbol}`\n"
             f"قیمت: `{curr['close']}`\n"
             f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
@@ -192,6 +144,8 @@ def analyze(symbol: str, margin: float):
         print(f"[{time.strftime('%H:%M:%S')}] Signal SHORT on {symbol}")
         send_telegram(msg)
         place_order_safe(symbol, 'sell', margin, sl, tp)
+    else:
+        print(f"[{symbol}] Price: {curr['close']} | EMA20: {ema:.4f} | Waiting for setup...")
 
 if __name__ == "__main__":
     for i in range(9):
@@ -200,4 +154,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-            
+    
