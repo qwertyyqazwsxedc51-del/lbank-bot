@@ -1,4 +1,4 @@
-name: LBank Trading Signal Bot
+name: LBank Trading Bot
 
 on:
   push:
@@ -6,8 +6,7 @@ on:
       - main
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:  # این خط را اضافه کن
-
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -26,6 +25,11 @@ jobs:
           pip install ccxt pandas numpy requests
 
       - name: Run Market Analysis
+        env:
+          LBANK_API_KEY: ${{ secrets.LBANK_API_KEY }}
+          LBANK_API_SECRET: ${{ secrets.LBANK_API_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
           python main.py
           
