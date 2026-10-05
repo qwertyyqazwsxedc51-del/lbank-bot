@@ -6,8 +6,8 @@ import requests
 import pandas as pd
 import ccxt
 
-GAPGPTMASKTOKEN7fgm82hxnywX0X = os.getenv("LBANK_API_KEY")
-secret_key = os.getenv("LBANK_API_SECRET")
+API_KEY = os.getenv("LBANK_API_KEY")
+API_SECRET = os.getenv("LBANK_API_SECRET")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
@@ -17,8 +17,8 @@ LEVERAGE = 10
 DEFAULT_MARGIN = 2.0
 
 exchange = ccxt.lbank({
-    'GAPGPTMASKTOKEN7fgm82hxnywX1X': GAPGPTMASKTOKEN7fgm82hxnywX2X,
-    'secret': secret_key,
+    'apiKey': API_KEY,
+    'secret': API_SECRET,
     'enableRateLimit': True,
 })
 
@@ -31,68 +31,60 @@ def send_telegram(msg):
             print(f"Telegram error: {e}")
 
 def get_futures_balance():
-    if not GAPGPTMASKTOKEN7fgm82hxnywX3X or not secret_key:
+    if not API_KEY or not API_SECRET:
+        print("[!] API keys missing.")
         return 0.0
 
-    endpoints = [
-        "https://api.lbkex.com/v2/supplemental/user_info.do",
-        "https://lbkperp.lbank.com/cfd/openApi/v1/pub/account"
-    ]
-    
     timestamp = str(int(time.time() * 1000))
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
         'Content-Type': 'application/x-www-form-urlencoded'
     }
 
-    # تلاش ۱: اندپوینت استاندارد کیف‌پول
+    # تلاش ۱: اندپوینت فیوچرز البانک
     try:
-        params_str = f"GAPGPTMASKTOKEN7fgm82hxnywX4X=GAPGPTMASKTOKEN7fgm82hxnywX5X}&timestamp={timestamp}"
-        sign = hmac.new(secret_key.encode('utf-8'), params_str.encode('utf-8'), hashlib.sha256).hexdigest()
-        data = {
-            'GAPGPTMASKTOKEN7fgm82hxnywX6X': GAPGPTMASKTOKEN7fgm82hxnywX7X,
-            'timestamp': timestamp,
-            'sign': sign
-        }
-        res = requests.post(endpoints[0], data=data, headers=headers, timeout=10)
-        print(f"[LBK Wallet Response]: {res.status_code} - {res.text[:120]}")
-        if res.status_code == 200:
-            res_json = res.json()
-            if res_json.get("result") == "true" or res_json.get("code") == 0:
-                balances = res_json.get("data", {}).get("balances", [])
-                for b in balances:
-                    if b.get("asset") == "usdt" or b.get("currency") == "usdt":
-                        return float(b.get("free", b.get("available", 0.0)))
-    except Exception as e:
-        print(f"[!] Wallet API Error: {e}")
-
-    # تلاش ۲: اندپوینت مستقیم قراردادهای فیوچرز
-    try:
-        params_str = f"GAPGPTMASKTOKEN7fgm82hxnywX8X=GAPGPTMASKTOKEN7fgm82hxnywX9X}&timestamp={timestamp}"
-        sign = hmac.new(secret_key.encode('utf-8'), params_str.encode('utf-8'), hashlib.sha256).hexdigest()
+        url = "https://lbkperp.lbank.com/cfd/openApi/v1/pub/account"
+        params_str = f"api_key={API_KEY}&timestamp={timestamp}"
+        sign = hmac.new(API_SECRET.encode('utf-8'), params_str.encode('utf-8'), hashlib.sha256).hexdigest()
         perp_headers = {
-            'GAPGPTMASKTOKEN7fgm82hxnywX10X': GAPGPTMASKTOKEN7fgm82hxnywX11X,
+            **headers,
+            'api_key': API_KEY,
             'sign': sign,
             'timestamp': timestamp,
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
         }
-        res = requests.post(endpoints[1], data=params_str, headers=perp_headers, timeout=10)
-        print(f"[LBK Perp Response]: {res.status_code} - {res.text[:120]}")
+        res = requests.post(url, data=params_str + f"&sign={sign}", headers=perp_headers, timeout=10)
+        print(f"[LBK Perp Response]: {res.status_code} - {res.text[:200]}")
         if res.status_code == 200:
             res_json = res.json()
-            if res_json.get("result") == "true" or res_json.get("code") == 200:
+            if str(res_json.get("result")).lower() == "true" or res_json.get("code") == 200:
                 data_items = res_json.get("data", [])
                 if isinstance(data_items, list):
                     for item in data_items:
-                        if item.get("asset") == "USDT":
+                        if str(item.get("asset", "")).upper() == "USDT":
                             return float(item.get("availableMargin", item.get("free", 0.0)))
     except Exception as e:
         print(f"[!] Perp API Error: {e}")
 
-    return 0.0
+    # تلاش ۲: اندپوینت کیف‌پول اصلی
+    try:
+        url = "https://api.lbkex.com/v2/supplemental/user_info.do"
+        params_str = f"api_key={API_KEY}&timestamp={timestamp}"
+        sign = hmac.new(API_SECRET.encode('utf-8'), params_str.encode('utf-8'), hashlib.sha256).hexdigest()
+        data = {'api_key': API_KEY, 'timestamp': timestamp, 'sign': sign}
+        res = requests.post(url, data=data, headers=headers, timeout=10)
+        print(f"[LBK Wallet Response]: {res.status_code} - {res.text[:200]}")
+        if res.status_code == 200:
+            res_json = res.json()
+            if str(res_json.get("result")).lower() == "true":
+                balances = res_json.get("data", {}).get("balances", [])
+                for b in balances:
+                    asset = b.get("asset", b.get("currency", ""))
+                    if str(asset).lower() == "usdt":
+                        return float(b.get("free", b.get("available", 0.0)))
+    except Exception as e:
+        print(f"[!] Wallet API Error: {e}")
 
-def calculate_ema(df, period=20):
-    return df['close'].ewm(span=period, adjust=False).mean()
+    return 0.0
 
 def analyze_market(symbol, margin):
     print(f"\n--- Checking {symbol} ---")
@@ -103,7 +95,7 @@ def analyze_market(symbol, margin):
             return
 
         df = pd.DataFrame(ohlcv, columns=['time', 'open', 'high', 'low', 'close', 'vol'])
-        df['ema20'] = calculate_ema(df, 20)
+        df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
 
         prev = df.iloc[-2]
         curr_price = df.iloc[-1]['close']
@@ -153,13 +145,14 @@ def analyze_market(symbol, margin):
 
 if __name__ == "__main__":
     print(f"Starting execution at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}...")
-    
-    futures_balance = get_futures_balance()
-    trade_margin = max(DEFAULT_MARGIN, futures_balance * 0.005)
-    
-    print(f"[*] Futures USDT Balance: {futures_balance:.2f}$ | Active Margin per Trade: {trade_margin:.2f}$")
-    
+
+    balance = get_futures_balance()
+    trade_margin = max(DEFAULT_MARGIN, balance * 0.005)
+
+    print(f"[*] USDT Balance: {balance:.2f}$ | Active Margin per Trade: {trade_margin:.2f}$")
+
     for sym in SYMBOLS:
         analyze_market(sym, trade_margin)
-        
+
     print("Done.")
+        
