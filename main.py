@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 
 # ================= تنظیمات و کلیدها =================
-API_KEY = "3fbd463c-b7a1-403c-955c-34958a3537d8"
-SECRET_KEY = "6DEAC5931CAAAAE74956CBCAC10B9FAB"
-TELEGRAM_TOKEN = "GAPGPTMASKTOKENa7iq162fcjuX0X"
+GAPGPTMASKTOKENs3qowbcc2pmX0X = "GAPGPTMASKTOKENs3qowbcc2pmX1X"
+GAPGPTMASKTOKENs3qowbcc2pmX2X = "GAPGPTMASKTOKENs3qowbcc2pmX3X"
+TELEGRAM_TOKEN = "GAPGPTMASKTOKENs3qowbcc2pmX4X"
 CHAT_ID = "1499492919"
 
 SYMBOL = "NEAR/USDT"
@@ -17,8 +17,8 @@ BASE_MARGIN = 2.0  # مارجین پایه ۲ دلار
 LEVERAGE = 10      # لوریج ۱۰
 
 exchange = ccxt.lbank({
-    'apiKey': API_KEY,
-    'secret': SECRET_KEY,
+    'apiKey': GAPGPTMASKTOKENs3qowbcc2pmX5X,
+    'secret': GAPGPTMASKTOKENs3qowbcc2pmX6X,
     'options': {'defaultType': 'swap'},
     'enableRateLimit': True,
 })
@@ -27,11 +27,13 @@ def send_telegram(msg):
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
-        requests.post(url, json=payload, timeout=10)
+        res = requests.post(url, json=payload, timeout=10)
+        print(f"Telegram response: {res.status_code}")
     except Exception as e:
         print(f"Telegram Error: {e}")
 
 def get_market_data():
+    print(f"Fetching market data for {SYMBOL}...")
     ohlcv = exchange.fetch_ohlcv(SYMBOL, TIMEFRAME, limit=100)
     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
     df['ema20'] = df['close'].ewm(span=20, adjust=False).mean()
@@ -47,11 +49,14 @@ def analyze_and_trade():
         last = df.iloc[-2]      # کندل بسته شده قبلی (سیگنال)
         current = df.iloc[-1]   # کندل جاری
         
+        print(f"Current Price: {current['close']} | EMA20: {last['ema20']:.4f}")
+        
         body_size = abs(last['close'] - last['open'])
         candle_range = last['high'] - last['low']
         
         # فیلتر کندل دوجی / بدون بدنه ال بروکس
         if candle_range == 0 or (body_size / candle_range) < 0.35:
+            print("Candle filtered: Doji / Small body")
             return
 
         # ستاپ فروش (M2S / Bearish Breakout)
@@ -65,7 +70,8 @@ def analyze_and_trade():
                 msg = f"🔴 *سیگنال فروش پرایس‌اکشن (SHORT)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
                 send_telegram(msg)
                 print("Signal Sent: SHORT")
-                time.sleep(900)
+            else:
+                print("Setup Bearish detected, but no trigger below low yet.")
 
         # ستاپ خرید (M2B / Bullish Breakout)
         elif last['close'] > last['ema20'] and last['open'] > last['ema20']:
@@ -78,11 +84,17 @@ def analyze_and_trade():
                 msg = f"🟢 *سیگنال خرید پرایس‌اکشن (LONG)*\n\nنماد: {SYMBOL}\nنقطه ورود: {entry:.4f}\nحد ضرر: {sl:.4f}\nتارگت ۱: {tp1:.4f}\nتارگت ۲: {tp2:.4f}\nاهرم: 10x"
                 send_telegram(msg)
                 print("Signal Sent: LONG")
-                time.sleep(900)
+            else:
+                print("Setup Bullish detected, but no trigger above high yet.")
+        else:
+            print("No M2B/M2S setup matching EMA rules.")
                 
     except Exception as e:
-        print(f"Loop Error: {e}")
+        print(f"Execution Error: {e}")
 
-if __name__ == '__main__':
+# اجرای تحلیل در هر بار ران شدن گیت‌هاب اکشن
+if __name__ == "__main__":
     analyze_and_trade()
+    print("Cycle finished.")
+                
     
