@@ -1,3 +1,4 @@
+print("Starting analysis cycle...")
 import ccxt
 import time
 import requests
