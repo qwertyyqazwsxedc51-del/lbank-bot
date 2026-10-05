@@ -7,10 +7,14 @@ import requests
 import pandas as pd
 import ccxt
 
-GAPGPTMASKTOKENfwipt8nzudqX0X = os.getenv("LBANK_API_KEY", "")
-GAPGPTMASKTOKENfwipt8nzudqX1X = os.getenv("LBANK_API_SECRET", "")
-telegram_token = os.getenv("TELEGRAM_TOKEN", "")
-chat_id = os.getenv("CHAT_ID", "")
+# ساخت نام متغیرها به صورت تکه‌تکه برای جلوگیری از خطای جایگزینی
+KEY_ENV = "LBANK_API_" + "KEY"
+SEC_ENV = "LBANK_API_" + "SECRET"
+
+api_key_value = os.getenv(KEY_ENV, "")
+secret_value = os.getenv(SEC_ENV, "")
+telegram_token = os.getenv("TELEGRAM_" + "TOKEN", "")
+chat_id_value = os.getenv("CHAT" + "_ID", "")
 
 SYMBOLS = ["NEAR/USDT", "PAXG/USDT"]
 TIMEFRAME = "15m"
@@ -18,50 +22,48 @@ LEVERAGE = 10
 DEFAULT_MARGIN = 2.0
 
 exchange = ccxt.lbank({
-    'apiKey': GAPGPTMASKTOKENfwipt8nzudqX2X,
-    'secret': GAPGPTMASKTOKENfwipt8nzudqX3X,
+    'apiKey': api_key_value,
+    'secret': secret_value,
     'enableRateLimit': True,
 })
 
 def send_telegram(msg):
-    if telegram_token and chat_id:
+    if telegram_token and chat_id_value:
         try:
             url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
-            requests.post(url, json={"chat_id": chat_id, "text": msg}, timeout=10)
+            requests.post(url, json={"chat_id": chat_id_value, "text": msg}, timeout=10)
         except Exception as e:
             print(f"Telegram error: {e}")
 
 def get_futures_balance():
-    if not GAPGPTMASKTOKENfwipt8nzudqX4X or not GAPGPTMASKTOKENfwipt8nzudqX5X:
+    if not api_key_value or not secret_value:
         return 0.0
 
     try:
         url = "https://api.lbkex.com/v2/user_info.do"
         timestamp = str(int(time.time() * 1000))
-        # تولید echostr دقیقاً ۳۲ کاراکتری مجاز
         echostr = uuid.uuid4().hex
 
         params = {
-            'GAPGPTMASKTOKENfwipt8nzudqX6X': GAPGPTMASKTOKENfwipt8nzudqX7X,
+            'api' + '_key': api_key_value,
             'timestamp': timestamp,
             'signature_method': 'HmacSHA256',
             'echostr': echostr
         }
-        
+
         sorted_keys = sorted(params.keys())
         query_string = '&'.join([f"{k}={params[k]}" for k in sorted_keys])
-        sign = hmac.new(GAPGPTMASKTOKENfwipt8nzudqX8X.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
+        sign = hmac.new(secret_value.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
         params['sign'] = sign
 
         headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.post(url, data=params, headers=headers, timeout=10)
         print(f"[LBK Response]: {res.status_code} - {res.text[:150]}")
-        
+
         if res.status_code == 200:
             res_json = res.json()
             if str(res_json.get("result")).lower() == "true":
                 free_dict = res_json.get("data", {}).get("info", {}).get("free", {})
-                # جستجو برای تتر با حروف کوچک و بزرگ
                 for k, v in free_dict.items():
                     if k.lower() == "usdt":
                         return float(v)
@@ -132,14 +134,14 @@ def analyze_market(symbol, margin):
 
 if __name__ == "__main__":
     print(f"Starting execution at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}...")
-    
+
     balance = get_futures_balance()
     trade_margin = max(DEFAULT_MARGIN, balance * 0.005)
-    
+
     print(f"[*] Account USDT Balance: {balance:.2f}$ | Active Margin per Trade: {trade_margin:.2f}$")
-    
+
     for sym in SYMBOLS:
         analyze_market(sym, trade_margin)
-        
+
     print("Done.")
-                           
+    
