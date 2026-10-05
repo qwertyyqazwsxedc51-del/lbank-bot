@@ -6,10 +6,10 @@ import requests
 import pandas as pd
 import ccxt
 
-GAPGPTMASKTOKENww8wgc2kviX0X = os.getenv("LBANK_API_KEY")
-GAPGPTMASKTOKENww8wgc2kviX1X = os.getenv("LBANK_secret-95264832")
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+api_key = os.getenv("LBANK_API_KEY", "")
+api_secret = os.getenv("LBANK_API_SECRET", "")
+telegram_token = os.getenv("TELEGRAM_TOKEN", "")
+chat_id = os.getenv("CHAT_ID", "")
 
 SYMBOLS = ["NEAR/USDT", "PAXG/USDT"]
 TIMEFRAME = "15m"
@@ -17,64 +17,49 @@ LEVERAGE = 10
 DEFAULT_MARGIN = 2.0
 
 exchange = ccxt.lbank({
-    'apiKey': GAPGPTMASKTOKENww8wgc2kviX2X,
-    'secret': GAPGPTMASKTOKENww8wgc2kviX3X,
+    'apiKey': api_key,
+    'secret': api_secret,
     'enableRateLimit': True,
 })
 
 def send_telegram(msg):
-    if TELEGRAM_TOKEN and CHAT_ID:
+    if telegram_token and chat_id:
         try:
-            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-            requests.post(url, json={"chat_id": CHAT_ID, "text": msg}, timeout=10)
+            url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+            requests.post(url, json={"chat_id": chat_id, "text": msg}, timeout=10)
         except Exception as e:
             print(f"Telegram error: {e}")
 
 def get_futures_balance():
-    if not GAPGPTMASKTOKENww8wgc2kviX4X or not GAPGPTMASKTOKENww8wgc2kviX5X:
+    if not api_key or not api_secret:
         return 0.0
 
-    # روش ۱: استفاده از توابع رسمی CCXT برای خواندن بالانس
-    try:
-        balance_info = exchange.fetch_balance()
-        if 'USDT' in balance_info:
-            free_usdt = float(balance_info['USDT'].get('free', 0.0))
-            if free_usdt > 0:
-                print(f"[CCXT Balance Found]: {free_usdt} USDT")
-                return free_usdt
-    except Exception as e:
-        print(f"[CCXT Fetch Notice]: {e}")
-
-    # روش ۲: فراخوانی مستقیم API رسمی V2 البانک (user_info)
     try:
         url = "https://api.lbkex.com/v2/user_info.do"
         timestamp = str(int(time.time() * 1000))
         params = {
-            'api_key': GAPGPTMASKTOKENww8wgc2kviX6X,
+            'api_key': api_key,
             'timestamp': timestamp,
             'signature_method': 'HmacSHA256',
-            'echostr': 'bot_fetch'
+            'echostr': 'signal_bot'
         }
         
-        # مرتب‌سازی پارامترها به ترتیب الفبا طبق مستندات البانک
         sorted_keys = sorted(params.keys())
         query_string = '&'.join([f"{k}={params[k]}" for k in sorted_keys])
-        
-        sign = hmac.new(GAPGPTMASKTOKENww8wgc2kviX7X.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
+        sign = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
         params['sign'] = sign
 
         headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.post(url, data=params, headers=headers, timeout=10)
-        print(f"[API V2 Response]: {res.status_code} - {res.text[:150]}")
+        print(f"[LBK Response]: {res.status_code} - {res.text[:120]}")
         
         if res.status_code == 200:
-            res_data = res.json()
-            info = res_data.get("data", {}).get("info", {})
-            free_data = info.get("free", {})
-            if "usdt" in free_data:
-                return float(free_data["usdt"])
-    except Exception as e:
-        print(f"[!] API V2 Error: {e}")
+            res_json = res.json()
+            free_dict = res_json.get("data", {}).get("info", {}).get("free", {})
+            if "usdt" in free_dict:
+                return float(free_dict["usdt"])
+    except Exception as err:
+        print(f"[!] Balance Read Error: {err}")
 
     return 0.0
 
@@ -103,7 +88,7 @@ def analyze_market(symbol, margin):
             print("Setup rejected: Signal candle is a Doji (< 35% body).")
             return
 
-        # ستاپ خرید M2B (پرایس‌اکشن ال بروکس)
+        # ستاپ خرید M2B
         if prev['low'] <= prev['ema20'] and prev['close'] > prev['ema20'] and prev['close'] > prev['open']:
             stop_loss = prev['low']
             take_profit = curr_price + (curr_price - stop_loss) * 1.5
@@ -113,12 +98,12 @@ def analyze_market(symbol, margin):
                 f"نقطه ورود: {curr_price}\n"
                 f"حد ضرر: {stop_loss}\n"
                 f"حد سود: {take_profit:.4f}\n"
-                f"مارجین: {margin:.2f}$ (لوریج {LEVERAGE})"
+                f"مارجین معامله: {margin:.2f}$ (لوریج {LEVERAGE})"
             )
             print(msg)
             send_telegram(msg)
 
-        # ستاپ فروش M2S (پرایس‌اکشن ال بروکس)
+        # ستاپ فروش M2S
         elif prev['high'] >= prev['ema20'] and prev['close'] < prev['ema20'] and prev['close'] < prev['open']:
             stop_loss = prev['high']
             take_profit = curr_price - (stop_loss - curr_price) * 1.5
@@ -128,7 +113,7 @@ def analyze_market(symbol, margin):
                 f"نقطه ورود: {curr_price}\n"
                 f"حد ضرر: {stop_loss}\n"
                 f"حد سود: {take_profit:.4f}\n"
-                f"مارجین: {margin:.2f}$ (لوریج {LEVERAGE})"
+                f"مارجین معامله: {margin:.2f}$ (لوریج {LEVERAGE})"
             )
             print(msg)
             send_telegram(msg)
@@ -140,14 +125,14 @@ def analyze_market(symbol, margin):
 
 if __name__ == "__main__":
     print(f"Starting execution at {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}...")
-
+    
     balance = get_futures_balance()
     trade_margin = max(DEFAULT_MARGIN, balance * 0.005)
-
-    print(f"[*] USDT Balance: {balance:.2f}$ | Active Margin per Trade: {trade_margin:.2f}$")
-
+    
+    print(f"[*] Account USDT Balance: {balance:.2f}$ | Active Margin per Trade: {trade_margin:.2f}$")
+    
     for sym in SYMBOLS:
         analyze_market(sym, trade_margin)
-
+        
     print("Done.")
     
