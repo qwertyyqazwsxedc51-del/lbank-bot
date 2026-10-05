@@ -1,13 +1,14 @@
 import os
 import time
+import uuid
 import hmac
 import hashlib
 import requests
 import pandas as pd
 import ccxt
 
-api_key = os.getenv("LBANK_API_KEY", "")
-api_secret = os.getenv("LBANK_API_SECRET", "")
+GAPGPTMASKTOKENfwipt8nzudqX0X = os.getenv("LBANK_API_KEY", "")
+GAPGPTMASKTOKENfwipt8nzudqX1X = os.getenv("LBANK_API_SECRET", "")
 telegram_token = os.getenv("TELEGRAM_TOKEN", "")
 chat_id = os.getenv("CHAT_ID", "")
 
@@ -17,8 +18,8 @@ LEVERAGE = 10
 DEFAULT_MARGIN = 2.0
 
 exchange = ccxt.lbank({
-    'apiKey': api_key,
-    'secret': api_secret,
+    'apiKey': GAPGPTMASKTOKENfwipt8nzudqX2X,
+    'secret': GAPGPTMASKTOKENfwipt8nzudqX3X,
     'enableRateLimit': True,
 })
 
@@ -31,33 +32,39 @@ def send_telegram(msg):
             print(f"Telegram error: {e}")
 
 def get_futures_balance():
-    if not api_key or not api_secret:
+    if not GAPGPTMASKTOKENfwipt8nzudqX4X or not GAPGPTMASKTOKENfwipt8nzudqX5X:
         return 0.0
 
     try:
         url = "https://api.lbkex.com/v2/user_info.do"
         timestamp = str(int(time.time() * 1000))
+        # تولید echostr دقیقاً ۳۲ کاراکتری مجاز
+        echostr = uuid.uuid4().hex
+
         params = {
-            'api_key': api_key,
+            'GAPGPTMASKTOKENfwipt8nzudqX6X': GAPGPTMASKTOKENfwipt8nzudqX7X,
             'timestamp': timestamp,
             'signature_method': 'HmacSHA256',
-            'echostr': 'signal_bot'
+            'echostr': echostr
         }
         
         sorted_keys = sorted(params.keys())
         query_string = '&'.join([f"{k}={params[k]}" for k in sorted_keys])
-        sign = hmac.new(api_secret.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
+        sign = hmac.new(GAPGPTMASKTOKENfwipt8nzudqX8X.encode('utf-8'), query_string.encode('utf-8'), hashlib.sha256).hexdigest().upper()
         params['sign'] = sign
 
         headers = {'User-Agent': 'Mozilla/5.0'}
         res = requests.post(url, data=params, headers=headers, timeout=10)
-        print(f"[LBK Response]: {res.status_code} - {res.text[:120]}")
+        print(f"[LBK Response]: {res.status_code} - {res.text[:150]}")
         
         if res.status_code == 200:
             res_json = res.json()
-            free_dict = res_json.get("data", {}).get("info", {}).get("free", {})
-            if "usdt" in free_dict:
-                return float(free_dict["usdt"])
+            if str(res_json.get("result")).lower() == "true":
+                free_dict = res_json.get("data", {}).get("info", {}).get("free", {})
+                # جستجو برای تتر با حروف کوچک و بزرگ
+                for k, v in free_dict.items():
+                    if k.lower() == "usdt":
+                        return float(v)
     except Exception as err:
         print(f"[!] Balance Read Error: {err}")
 
@@ -135,4 +142,4 @@ if __name__ == "__main__":
         analyze_market(sym, trade_margin)
         
     print("Done.")
-        
+                           
