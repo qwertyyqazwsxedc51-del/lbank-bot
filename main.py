@@ -18,7 +18,7 @@ BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
 TIMEFRAME = "15m"
 
-# تنظیمات اتصال اسپات/مارکت دیتا
+# تنظیمات کلاینت برای دریافت قیمت و دیتا
 exchange = ccxt.lbank({
     'enableRateLimit': True,
     'apiKey': api_key,
@@ -37,38 +37,51 @@ def send_telegram(message: str):
     except Exception as e:
         print(f"[Telegram Error] {e}")
 
-def get_lbank_futures_balance_direct():
-    """دریافت مستقیم موجودی از اندپوینت فیوچرز LBank"""
+def get_lbank_futures_balance():
+    """دریافت دقیق موجودی تتر فیوچرز LBank از طریق اندپوینت رسمی REST"""
     if not (api_key and api_secret):
         return 0.0
 
-    url = "https://lbkperp.lbank.com/cfd/openApi/v1/pub/user/assets"
     timestamp = str(int(time.time() * 1000))
-    params_str = f"api_key={api_key}&timestamp={timestamp}"
+    query_str = f"api_key={api_key}&timestamp={timestamp}"
     
-    # تولید امضای HmacSHA256
-    sign = hmac.new(api_secret.encode('utf-8'), params_str.encode('utf-8'), hashlib.sha256).hexdigest()
+    # تولید امضای استاندارد LBank Futures
+    sign = hmac.new(api_secret.encode('utf-8'), query_str.encode('utf-8'), hashlib.sha256).hexdigest()
     
     headers = {
+        'api_key': api_key,
         'timestamp': timestamp,
         'signature': sign,
-        'api_key': api_key,
-        'Content-Type': 'application/x-www-form-urlencoded'
+        'Content-Type': 'application/json'
     }
-    
-    try:
-        res = requests.post(url, data=params_str, headers=headers, timeout=10)
-        data = res.json()
-        if data.get('result') == 'true' or data.get('code') == 200:
-            assets = data.get('data', [])
-            if isinstance(assets, list):
-                for item in assets:
-                    if item.get('currency', '').upper() == 'USDT' or item.get('asset', '').upper() == 'USDT':
-                        return float(item.get('availableMargin') or item.get('availableBalance') or item.get('free') or item.get('balance', 0.0))
-            elif isinstance(assets, dict):
-                return float(assets.get('availableMargin') or assets.get('availableBalance') or assets.get('balance', 0.0))
-    except Exception as e:
-        print(f"[Direct API Notice] {e}")
+
+    urls = [
+        f"https://lbkperp.lbank.com/cfd/openApi/v1/pub/user/assets?{query_str}&sign={sign}",
+        f"https://www.lbank.com/v2/supplement/customer_asset.do?{query_str}&sign={sign}"
+    ]
+
+    for url in urls:
+        try:
+            res = requests.get(url, headers=headers, timeout=8)
+            if res.status_code == 200:
+                data = res.json()
+                # جستجو در خروجی داده‌های LBank
+                raw_data = data.get('data') or data.get('result') or []
+                if isinstance(raw_data, list):
+                    for item in raw_data:
+                        curr = item.get('currency') or item.get('asset') or item.get('coinName') or ''
+                        if curr.upper() == 'USDT':
+                            val = item.get('availableMargin') or item.get('availableBalance') or item.get('free') or item.get('balance')
+                            if val is not None:
+                                return float(val)
+                elif isinstance(raw_data, dict):
+                    if 'USDT' in raw_data:
+                        return float(raw_data['USDT'].get('free', 0.0) or raw_data['USDT'].get('available', 0.0) or 0.0)
+                    val = raw_data.get('availableMargin') or raw_data.get('availableBalance') or raw_data.get('free')
+                    if val is not None:
+                        return float(val)
+        except Exception:
+            continue
 
     return 0.0
 
@@ -76,25 +89,16 @@ def get_dynamic_margin():
     if not (api_key and api_secret):
         return BASE_MARGIN_USD
 
-    free_usdt = 0.0
+    free_usdt = get_lbank_futures_balance()
 
-    # روش ۱: فراخوانی مستقیم فیوچرز LBank
-    free_usdt = get_lbank_futures_balance_direct()
-
-    # روش ۲: فال‌بک با ccxt در صورت عدم پاسخ روش مستقیم
+    # در صورتی که پاسخ مستقیم دریافت نشد، از CCXT اسپات تست شود
     if free_usdt == 0.0:
         try:
             bal = exchange.fetch_balance()
-            if 'USDT' in bal and isinstance(bal['USDT'], dict):
-                free_usdt = float(bal['USDT'].get('free', 0.0) or bal['USDT'].get('total', 0.0) or 0.0)
-            elif 'free' in bal and isinstance(bal['free'], dict):
-                free_usdt = float(bal['free'].get('USDT', 0.0) or 0.0)
-            elif 'total' in bal and isinstance(bal['total'], dict):
-                free_usdt = float(bal['total'].get('USDT', 0.0) or 0.0)
-        except Exception as e:
-            print(f"[CCXT Fallback Notice] {e}")
+            free_usdt = float(bal.get('USDT', {}).get('free', 0.0) or 0.0)
+        except Exception:
+            pass
 
-    # محاسبه مارجین تخصیص‌یافته
     if free_usdt > 0.0:
         margin = max(BASE_MARGIN_USD, free_usdt * RISK_PERCENT)
     else:
@@ -224,4 +228,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-    
+        
