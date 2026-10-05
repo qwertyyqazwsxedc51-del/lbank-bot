@@ -6,9 +6,9 @@ import pandas as pd
 import numpy as np
 
 # ================= تنظیمات و کلیدها =================
-GAPGPTMASKTOKENs3qowbcc2pmX0X = "GAPGPTMASKTOKENs3qowbcc2pmX1X"
-GAPGPTMASKTOKENs3qowbcc2pmX2X = "GAPGPTMASKTOKENs3qowbcc2pmX3X"
-TELEGRAM_TOKEN = "GAPGPTMASKTOKENs3qowbcc2pmX4X"
+LBANK_API_KEY = "GAPGPTMASKTOKEN7zt92gn7xbhX0X"
+LBANK_SECRET_KEY = "GAPGPTMASKTOKEN7zt92gn7xbhX1X"
+TELEGRAM_TOKEN = "GAPGPTMASKTOKEN7zt92gn7xbhX2X"
 CHAT_ID = "1499492919"
 
 SYMBOL = "NEAR/USDT"
@@ -17,8 +17,8 @@ BASE_MARGIN = 2.0  # مارجین پایه ۲ دلار
 LEVERAGE = 10      # لوریج ۱۰
 
 exchange = ccxt.lbank({
-    'apiKey': GAPGPTMASKTOKENs3qowbcc2pmX5X,
-    'secret': GAPGPTMASKTOKENs3qowbcc2pmX6X,
+    'apiKey': LBANK_API_KEY,
+    'secret': LBANK_SECRET_KEY,
     'options': {'defaultType': 'swap'},
     'enableRateLimit': True,
 })
@@ -96,5 +96,4 @@ def analyze_and_trade():
 if __name__ == "__main__":
     analyze_and_trade()
     print("Cycle finished.")
-                
     
