@@ -1,7 +1,7 @@
 name: Bot
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -13,7 +13,11 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - env:
-          GAPGPTMASKTOKENh24oc5sie19X0X: ${{ secrets.GAPGPTMASKTOKENh24oc5sie19X1X }}
-          GAPGPTMASKTOKENh24oc5sie19X2X: ${{ secrets.GAPGPTMASKTOKENh24oc5sie19X3X }}
-          TELE
+      - name: Run Script
+        env:
+          LBANK_API_KEY: ${{ secrets.LBANK_API_KEY }}
+          LBANK_API_SECRET: ${{ secrets.LBANK_API_SECRET }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: python main.py
+        
