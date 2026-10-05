@@ -4,12 +4,11 @@ import requests
 import ccxt
 import pandas as pd
 
-# کلیدها از محیط خوانده می‌شوند
-api_key = os.getenv("3fbd463c-b7a1-403c-955c-34958a3537d8", "")
-api_secret = os.getenv("6DEAC5931CAAAAE74956CBCAC10B9FAB", "")
-tele_token = os.getenv("8718217424:AAEN461V8g6lEyuCDWeB16-tMkGULfcNRrw", "")
-chat_id = os.getenv("1499492919", "")
-
+# کلیدها از سکرت‌های گیت‌هاب خوانده می‌شوند
+api_key = os.getenv("LBANK_API_KEY", "")
+api_secret = os.getenv("LBANK_API_SECRET", "")
+tele_token = os.getenv("TELEGRAM_TOKEN", "")
+chat_id = os.getenv("CHAT_ID", "")
 
 SYMBOLS = ["NEAR/USDT", "BTC/USDT"]
 LEVERAGE = 10
@@ -17,13 +16,14 @@ BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
 TIMEFRAME = "15m"
 
-# اتصال به صرافی البانک
+# تنظیمات اتصال به البانک
 exchange_config = {
     'enableRateLimit': True,
 }
 
 if api_key and api_secret:
-
+    exchange_config['apiKey'] = api_key
+    exchange_config['secret'] = api_secret
 
 exchange = ccxt.lbank(exchange_config)
 
@@ -37,7 +37,7 @@ def send_telegram(message: str):
         print(f"[Telegram Error] {e}")
 
 def get_dynamic_margin():
-    if not (GAPGPTMASKTOKENmkk2l8vzk9iX6X and GAPGPTMASKTOKENmkk2l8vzk9iX7X):
+    if not (api_key and api_secret):
         return BASE_MARGIN_USD
     try:
         balance = exchange.fetch_balance()
@@ -50,7 +50,7 @@ def get_dynamic_margin():
         return BASE_MARGIN_USD
 
 def place_order_safe(symbol: str, side: str, margin_usd: float, sl_price: float, tp_price: float):
-    if not (GAPGPTMASKTOKENmkk2l8vzk9iX8X and GAPGPTMASKTOKENmkk2l8vzk9iX9X):
+    if not (api_key and api_secret):
         print(f"[Mode] API Keys not present, running in Signal-Only mode.")
         return None
 
@@ -154,4 +154,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-    
+            
