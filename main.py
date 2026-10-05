@@ -10,7 +10,7 @@ api_secret = os.getenv("LBANK_API_SECRET", "")
 tele_token = os.getenv("TELEGRAM_TOKEN", "")
 chat_id = os.getenv("CHAT_ID", "")
 
-SYMBOLS = ["NEAR/USDT", "BTC/USDT"]
+SYMBOLS = ["NEAR/USDT", "XAUUSD/USDT"]
 LEVERAGE = 10
 BASE_MARGIN_USD = 2.0
 RISK_PERCENT = 0.50
@@ -19,6 +19,9 @@ TIMEFRAME = "15m"
 # تنظیمات اتصال به البانک
 exchange_config = {
     'enableRateLimit': True,
+    'options': {
+        'createMarketBuyOrderRequiresPrice': False,
+    }
 }
 
 if api_key and api_secret:
@@ -56,12 +59,30 @@ def place_order_safe(symbol: str, side: str, margin_usd: float, sl_price: float,
 
     try:
         ticker = exchange.fetch_ticker(symbol)
-        current_price = ticker['last']
-        raw_amount = (margin_usd * LEVERAGE) / current_price
-        amount = float(exchange.amount_to_precision(symbol, raw_amount))
+        current_price = ticker.get('last') or ticker.get('close')
+        if not current_price:
+            print(f"[Order Error] Could not fetch current price for {symbol}")
+            return None
 
-        print(f"[*] Placing {side.upper()} order for {symbol} (Amount: {amount})")
-        order = exchange.create_market_order(symbol, side, amount)
+        raw_amount = (margin_usd * LEVERAGE) / current_price
+        
+        # رعایت دقت اعشار صرافی برای حجم معامله
+        try:
+            amount = float(exchange.amount_to_precision(symbol, raw_amount))
+        except Exception:
+            amount = round(raw_amount, 2)
+
+        print(f"[*] Placing {side.upper()} order for {symbol} | Amount: {amount} | Ref Price: {current_price}")
+        
+        # ارسال سفارش با پارامتر قیمت جهت رفع خطای LBank
+        order = exchange.create_order(
+            symbol=symbol,
+            type='market',
+            side=side,
+            amount=amount,
+            price=current_price
+        )
+        
         print(f"[+] Order Filled: {order.get('id', 'N/A')}")
         return order
     except Exception as e:
@@ -107,7 +128,7 @@ def analyze(symbol: str, margin: float):
     close_in_upper_third = (c['close'] - c['low']) >= (0.65 * rng)
     close_in_lower_third = (c['high'] - c['close']) >= (0.65 * rng)
 
-    # ستاپ خرید M2B
+    # ستاپ خرید M2B (لانگ)
     if c['close'] > ema and c['open'] >= ema and c['close'] > c['open'] and close_in_upper_third:
         sl = c['low'] - (0.2 * atr)
         risk = c['close'] - sl
@@ -117,7 +138,7 @@ def analyze(symbol: str, margin: float):
         msg = (
             f"🟢 *سیگنال خرید (LONG)*\n"
             f"نماد: `{symbol}`\n"
-            f"قیمت: `{curr['close']}`\n"
+            f"قیمت ورود: `{curr['close']}`\n"
             f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
             f"🛑 حد ضرر: `{sl:.4f}`\n"
             f"🎯 حد سود: `{tp:.4f}`"
@@ -126,7 +147,7 @@ def analyze(symbol: str, margin: float):
         send_telegram(msg)
         place_order_safe(symbol, 'buy', margin, sl, tp)
 
-    # ستاپ فروش M2S
+    # ستاپ فروش M2S (شورت)
     elif c['close'] < ema and c['open'] <= ema and c['close'] < c['open'] and close_in_lower_third:
         sl = c['high'] + (0.2 * atr)
         risk = sl - c['close']
@@ -136,7 +157,7 @@ def analyze(symbol: str, margin: float):
         msg = (
             f"🔴 *سیگنال فروش (SHORT)*\n"
             f"نماد: `{symbol}`\n"
-            f"قیمت: `{curr['close']}`\n"
+            f"قیمت ورود: `{curr['close']}`\n"
             f"مارجین: `{margin}$` | لوریج: `x{LEVERAGE}`\n"
             f"🛑 حد ضرر: `{sl:.4f}`\n"
             f"🎯 حد سود: `{tp:.4f}`"
@@ -154,4 +175,4 @@ if __name__ == "__main__":
             analyze(sym, margin)
         if i < 8:
             time.sleep(30)
-            
+                           
