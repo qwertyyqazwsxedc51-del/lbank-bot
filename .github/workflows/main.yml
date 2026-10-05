@@ -1,30 +1,19 @@
-name: LBank Trading Bot
-
+name: Bot
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
-  run-bot:
+  run:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
-
-      - name: Install Dependencies
-        run: pip install -r requirements.txt
-
-      - name: Run Market Analysis
-        env:
-          LBANK_API_KEY: ${{ secrets.LBANK_API_KEY }}
-          LBANK_API_SECRET: ${{ secrets.LBANK_API_SECRET }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID: ${{ secrets.CHAT_ID }}
-        run: python main.py
-        
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - env:
+          GAPGPTMASKTOKENh24oc5sie19X0X: ${{ secrets.GAPGPTMASKTOKENh24oc5sie19X1X }}
+          GAPGPTMASKTOKENh24oc5sie19X2X: ${{ secrets.GAPGPTMASKTOKENh24oc5sie19X3X }}
+          TELE
